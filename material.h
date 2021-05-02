@@ -58,7 +58,8 @@ vec3 random_in_unit_sphere() {
 class material  {
     public:
         virtual bool scatter(const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered) const = 0;
-		virtual vec3 surface_light() const {return vec3(0,0,0);};
+		virtual vec3 surface_light() const = 0;
+		virtual vec3 ambient() const {return surface_light();};
 };
 
 class my_material : public material{
@@ -66,7 +67,7 @@ class my_material : public material{
 	my_material(){};
 	my_material(const vec3& a,float t, float f) : albedo(a) { trans=max(min(t,(float)1),(float)0);ref_idx = max(min(f,(float)1),(float)0); }
 	my_material(float t, float f) { albedo=vec3(1,0.2,0.2);trans=max(min(t,(float)1),(float)0);ref_idx = max(min(f,(float)1),(float)0); }
-	virtual bool scatter(const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered) const  {
+	virtual bool scatter(const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered) const override  {
 		vec3 outward_normal;
 		float ni_over_nt;
 		vec3 reflected = reflect(unit_vector(r_in.direction()), rec.normal);
@@ -111,7 +112,7 @@ class light_material : public material {
     public:
         light_material() : color(vec3(1,1,1)) {};
         light_material(const vec3& a) : color(a) {}
-        virtual bool scatter(const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered) const  {
+        virtual bool scatter(const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered) const override {
              return false;
         }
 		virtual vec3 surface_light() const override{
@@ -128,13 +129,14 @@ inline std::istream& operator>>(std::istream &is, light_material &l) {
 class lambertian : public material {
     public:
         lambertian(const vec3& a) : albedo(a) {}
-        virtual bool scatter(const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered) const  {
+        virtual bool scatter(const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered) const override {
+			std::cerr<<"A";
              vec3 target = rec.p + rec.normal + random_in_unit_sphere();
              scattered = ray(rec.p, target-rec.p);
              attenuation = albedo;
              return true;
         }
-
+		virtual vec3 surface_light() const override{return vec3(0,0,0);};
         vec3 albedo;
 };
 
@@ -143,12 +145,15 @@ class lambertian : public material {
 class metal : public material {
     public:
         metal(const vec3& a, float f) : albedo(a) { if (f < 1) fuzz = f; else fuzz = 1; }
-        virtual bool scatter(const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered) const  {
-            vec3 reflected = reflect(unit_vector(r_in.direction()), rec.normal);
-            scattered = ray(rec.p, reflected + fuzz*random_in_unit_sphere());
+        virtual bool scatter(const ray& r_in, const hit_record& rec, vec3& attenuation, ray& scattered) const override {
+            vec3 reflected = unit_vector(reflect(unit_vector(r_in.direction()), rec.normal));
+            scattered = ray(rec.p, unit_vector(reflected + fuzz*random_in_unit_sphere()));
             attenuation = albedo;
             return (dot(scattered.direction(), rec.normal) > 0);
         }
+		virtual vec3 surface_light() const override{
+			return albedo/100;
+		}
         vec3 albedo;
         float fuzz;
 };
@@ -186,7 +191,7 @@ class dielectric : public material {
                 scattered = ray(rec.p, refracted);
              return true;
         }
-
+		virtual vec3 surface_light() const {return vec3(0,0,0);};
         float ref_idx;
 };
 

@@ -26,9 +26,11 @@ bool hitable_list::hit(const ray& r, float t_min, float t_max, hit_record& rec) 
     hit_record temp_rec;
     bool hit_anything = false;
     double closest_so_far = t_max;
+	int te=list_size;
     for (int i = 0; i < list_size; i++) {
 		//std::cerr<<"i:"<<i<<std::endl;
         if (list[i]->hit(r, t_min, closest_so_far, temp_rec)) {
+			te=i;
             hit_anything = true;
             closest_so_far = temp_rec.t;
             rec = temp_rec;

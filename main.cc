@@ -14,7 +14,7 @@
 #include "dodoecaeder.h"
 #include "floor.h"
 #include "light.h"
-
+#include "light_list.h"
 #define _NO_DEBUG_HEAP 1
 
 inline std::istream& operator>>(std::istream &is, sphere &s) {
@@ -23,7 +23,7 @@ inline std::istream& operator>>(std::istream &is, sphere &s) {
 	double ref,trn;
 	is >> s.center>>clr>>s.radius>>ref>>trn>>s.l_amount;
 	std::cerr<<"\n"<<s.center<<" "<<s.radius<<"\n";
-	s.mat_ptr=new my_material(clr,ref,trn);//metal(vec3(0.2,1,0.2),0.5);//
+	s.mat_ptr=new metal(vec3(0.2,1,0.2),0.5);//my_material(clr,ref,trn);//
 	return is;
 }
 
@@ -35,27 +35,32 @@ constexpr float maxfloat=1000000;
 constexpr float minfloat=0.0001;
 
 using namespace std;
-vec3 color(const ray& r, hitable *world, int depth) {
+vec3 color(const ray& r, hitable *world, light* lights, int depth) {
     hit_record rec;
 					//logi<<"i:St\n"<<std::endl;
     if (world->hit(r, minfloat, maxfloat, rec)) {
         ray scattered;
         vec3 attenuation;
         if (depth < max_depth && rec.mat_ptr->scatter(r, rec, attenuation, scattered)) {
-             return attenuation*color(scattered, world, depth+1);
+			std::cerr<<"in";
+			vec3 clr = lights->illumination(rec.normal,rec.p);
+			vec3 ambient=rec.mat_ptr->ambient();
+			clr=(vec3(1,1,1)-ambient)*clr+ambient;
+			return clr + (vec3(1,1,1)-clr)*attenuation*color(scattered, world,lights, depth+1);
+			//return attenuation*color(scattered, world, depth+1);
         }
         else {
-            return rec.mat_ptr->surface_light();
+            return rec.mat_ptr->surface_light();//redone with light check
         }
     }
     else {
-		return vec3(0.1,0.1,0.1);
+		return vec3(0.1/2,0.1/2,0.1/2);
 					
     }
 }
 
 
-hitable *get_objects_scene() {
+std::pair<hitable*, light*> get_objects_scene() {
     int n = 10;
     hitable **list = new hitable*[n];
     int i = 0;
@@ -72,11 +77,11 @@ hitable *get_objects_scene() {
 	//reinterpret_cast<my_material*>(ico->mat_ptr)->albedo=vec3(0,1,0);
 	//reinterpret_cast<my_material*>(dod->mat_ptr)->albedo=vec3(0,0,1);
 	
-					 
+	/*				 
     list[i++] = oct;//new octaeder(vec3(0,-10,0), 1, new lambertian(vec3(1., 0.0, 0.0)));
     list[i++] = ico;//new icosaeder(vec3(10, -10, 1), 10.0, new dielectric(0.6));
 	list[i++] = dod;//new dodoecaeder(vec3(0, 0, 1), 10.0, new metal(vec3(0., 0., 1.),0.5));
-	
+	*/
 	//floor is uninitilize???
 	//list[i++] = flr;//new Floor(vec3(1, 0, 0), vec3(0,0,0),vec3(0,1,0),vec3(1,1,0), new metal(vec3(0., 0., 1.),0.5));
 	
@@ -113,6 +118,7 @@ hitable *get_objects_scene() {
         }
     }
 	*/
+	/*
 	int num_lights;
 	std::cin>>num_lights;
 	std::cerr<<num_lights;
@@ -123,8 +129,25 @@ hitable *get_objects_scene() {
 		std::cin>>*l;
 		list[i++] = l;
 	}
-	
-    return new hitable_list(list,i);
+	*/
+	list[i++] = new sphere(
+                        vec3(0,0,0), 0.2,
+                        new lambertian(vec3(random_double()*random_double(),
+                                            random_double()*random_double(),
+                                            random_double()*random_double())));
+											
+	int num_lights;		
+	int lc=0;
+	light** l_list = new light*[num_lights];
+	light* l=new light(vec3(2,2,2),new light_material(vec3(1,1,1)));
+	list[i++] = l;
+	l_list[lc++]=l;
+	hit_record hh;
+	ray rr(vec3(0,0,0),vec3(1,1,1)),t2;
+	vec3 t1;
+	assert(dynamic_cast<sphere*>(list[0])->mat_ptr->scatter(rr, hh, t1, t2));
+	std::cerr<<"\nGG\n";
+    return std::pair<hitable*,light*>(new hitable_list(list,i),new light_list(l_list,lc));
 }
 
 
@@ -158,7 +181,7 @@ int main() {
 	std::cerr<<"nx"<<nx<<"ny"<<ny<<"\n";
 	std::cin>>r0>>z0>>phi0>>Arc>>Azc>>wrc>>wzc>>wpc>>prc>>pzc;
 	std::cin>>r1>>z1>>phi1>>Arn>>Azn>>wrn>>wzn>>wpn>>prn>>pzn;
-	hitable *world = get_objects_scene();
+	auto [world,light_world] = get_objects_scene();
 	std::cerr<<"nx"<<nx<<"ny"<<ny<<"\n";
 	std::cerr<<reinterpret_cast<hitable_list*>(world)->list_size;
 	//std::cerr<<"\nsss"<<reinterpret_cast<light_material*>(reinterpret_cast<light*>(reinterpret_cast<hitable_list*>(world)->list[4])->mat_ptr)->color<<"\n";
@@ -183,7 +206,7 @@ int main() {
 		snprintf(file_str, 100,"render/out%d.ppm", t_step);
 		std::ofstream image(file_str);
 		image<< "P3\n" << nx << " " << ny << "\n255\n";
-		camera cam(lookfrom, lookat, vec3(0,1,0), 20, float(nx)/float(ny), aperture, dist_to_focus);
+		camera cam(vec3(sin(t),cos(t),5),vec3(0,0,0),vec3(0,1,0), 20, float(nx)/float(ny), aperture, dist_to_focus);//(lookfrom, lookat, vec3(0,1,0), 20, float(nx)/float(ny), aperture, dist_to_focus);
 					 
 		for (int j = ny-1; j >= 0; j--) {
 			logi<<"j:"<<j<<std::endl;
@@ -193,7 +216,7 @@ int main() {
 					float u = float(i + random_double()) / float(nx);
 					float v = float(j + random_double()) / float(ny);
 					ray r = cam.get_ray(u, v);
-					col += color(r, world,0);
+					col += color(r, world,light_world,0);
 				}
 				col /= float(ns);
 				if(col[0]<0||col[1]<0||col[2]<0) {std::cerr<<"i:" << i <<"j:"<<j<<std::endl; abort();}
@@ -201,7 +224,7 @@ int main() {
 				int ir = int(255.99*col[0]);
 				int ig = int(255.99*col[1]);
 				int ib = int(255.99*col[2]);
-				//image<< ir << " " << ig << " " << ib << "\n";
+				image<< ir << " " << ig << " " << ib << "\n";
 			}
 		}
 	}
